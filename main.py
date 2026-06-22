@@ -1,9 +1,7 @@
 """
 ÇALIŞTIRMA TALİMATLARI:
 
-1. Sanal Ortamı (venv) Aktif Etmek İçin:
-   Windows (PowerShell): .venv\Scripts\Activate.ps1
-   Windows (CMD): .venv\Scripts\activate.bat
+1. Sanal Ortamı (venv) kurun
 
 2. Gerekli Kütüphaneleri Kurmak İçin (Eğer kurulu değilse):
    pip install scapy
@@ -65,6 +63,50 @@ def parse_packet_yusuf(packet):
         return parsed_data
     return None
 
+def ahmet_ids_engine(parsed_data):
+    """
+    Ahmet Faruk'un Modülü: Basit Siber Güvenlik Kuralları Motoru (IDS).
+    Yusuf'un ayrıştırdığı verileri alır, şüpheli veya şifresiz trafiği tespit eder.
+    Bir sonraki aşama için uygun bir sözlük döndürür.
+    """
+    if not parsed_data:
+        return None
+        
+    alert_triggered = False
+    alert_reasons = []
+    
+    # Kural 1: Şifresiz/Tehlikeli Port Kontrolü (Örn: HTTP=80, FTP=21, Telnet=23)
+    unencrypted_ports = [80, 21, 23]
+    if parsed_data.get('dst_port') in unencrypted_ports or parsed_data.get('src_port') in unencrypted_ports:
+        alert_triggered = True
+        alert_reasons.append(f"ŞİFRESİZ TRAFİK (Port {parsed_data['dst_port'] or parsed_data['src_port']})")
+        
+    # Kural 2: Payload içinde şüpheli kelime tespiti (Cleartext credentials vb.)
+    suspicious_keywords = ['password', 'passwd', 'login', 'admin', 'root']
+    payload_lower = parsed_data.get('payload', '').lower()
+    
+    for keyword in suspicious_keywords:
+        if keyword in payload_lower:
+            alert_triggered = True
+            alert_reasons.append(f"ŞÜPHELİ KELİME TESPİTİ ('{keyword}')")
+            break # Bir tane bulması yeterli
+    
+    # Veri oluşturma
+    enriched_data = parsed_data.copy()
+    enriched_data['is_alert'] = alert_triggered
+    enriched_data['alert_reasons'] = alert_reasons
+    
+    # Eğer alarm tetiklendiyse ekrana terminal renk kodlarıyla kırmızı bas
+    if alert_triggered:
+        # \033[91m = Kırmızı Metin, \033[0m = Rengi Sıfırla
+        print("\033[91m" + "!!!" + "="*54 + "!!!")
+        print("!!! [ AHMET FARUK ] - IDS ALARMI !!!".center(60))
+        print(f"!!! Sebep : {', '.join(alert_reasons)}")
+        print(f"!!! Hedef : {parsed_data['dst_ip']}:{parsed_data['dst_port']}")
+        print("!!!" + "="*54 + "!!!\033[0m\n")
+
+    return enriched_data
+
 def packet_callback(packet):
     if IP in packet:
         # --- Nejdet'in Modülü: Ham Paket Yakalama ---
@@ -84,10 +126,12 @@ def packet_callback(packet):
             
         # ---  Paket Ayrıştırma ---
         parsed_packet = parse_packet_yusuf(packet)
-        # İleride Afsec in ids motoru bu 'parsed_packet' değişkenini kullanacak.
+
+	# -- IDS --
+        if parsed_packet:
+            ids_result = ahmet_ids_engine(parsed_packet)
 
 def main():
-    # --- Nejdet'in Modülü: Ham Paket Yakalama ---
     parser = argparse.ArgumentParser(description="Canlı Paket Yakalama Motoru")
     parser.add_argument('--proto', type=str, help="Filtrelenecek protokol veya BPF ifadesi (Örn: tcp, udp, 'port 53')", default="")
     args = parser.parse_args()
