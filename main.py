@@ -9,7 +9,7 @@
 3. Scripti Çalıştırmak İçin (Yönetici İzni Gerekebilir):
    python main.py
 
-4. Belirli bir protokolü filtreleyerek çalıştırmak isterseniz:
+4. Belirli bir protokolü filtreleyerek çalıştirmek isterseniz:
    python main.py --proto tcp
    python main.py --proto udp
    python main.py --proto "port 80"
@@ -17,7 +17,40 @@
 
 import argparse
 import sys
+import json
+import socket
 from scapy.all import sniff, IP, TCP, UDP
+
+# --- ÖMER FARUK SEVİM MODÜLÜ: JSON & UDP SERVER TRANSMITTER ---
+SERVER_IP = "127.0.0.1"  # Beyza'nın UDP sunucusunun IP adresi (Test için lokal)
+SERVER_PORT = 5005       # Beyza'nın UDP sunucusunun dinleyeceği port
+
+def omer_faruk_udp_transmitter(enriched_data):
+    """
+    Ömer Faruk'un Modülü: Ahmet Faruk'un IDS motorundan gelen zenginleştirilmiş 
+    veriyi alır, JSON formatına dönüştürür ve UDP protokolü üzerinden uzak sunucuya gönderir.
+    """
+    if not enriched_data:
+        return
+
+    try:
+        # byte verileri JSON serileştirmede hata vermemesi için string'e çeviriyoruz
+        data_to_send = enriched_data.copy()
+        if 'raw_payload' in data_to_send:
+            del data_to_send['raw_payload'] # Ham byte verisini ağ trafiği yükü olmasın diye siliyoruz
+
+        # Veriyi JSON formatına dönüştürme
+        json_payload = json.dumps(data_to_send, ensure_ascii=False)
+        
+        # UDP Soketi oluşturma ve veriyi fırlatma
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(json_payload.encode('utf-8'), (SERVER_IP, SERVER_PORT))
+        sock.close()
+        
+        print(f"\033[92m[ÖMER FARUK] Veri JSON'a dönüştürüldü ve UDP ile gönderildi -> {SERVER_IP}:{SERVER_PORT}\033[0m")
+    except Exception as e:
+        print(f"[-] [ÖMER FARUK ERROR] UDP gönderim hatası: {e}")
+
 
 def parse_packet_yusuf(packet):
     """
@@ -127,9 +160,14 @@ def packet_callback(packet):
         # ---  Paket Ayrıştırma ---
         parsed_packet = parse_packet_yusuf(packet)
 
-	# -- IDS --
+        # -- IDS --
         if parsed_packet:
             ids_result = ahmet_ids_engine(parsed_packet)
+            
+            # --- ÖMER FARUK ENTEGRASYONU ---
+            # Ahmet Faruk'un motorundan çıkan sonucu alıp ağ üzerinden sunucuya gönderiyoruz.
+            if ids_result:
+                omer_faruk_udp_transmitter(ids_result)
 
 def main():
     parser = argparse.ArgumentParser(description="Canlı Paket Yakalama Motoru")
